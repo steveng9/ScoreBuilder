@@ -1,0 +1,74 @@
+{
+  "format_version": 1,
+  "bpm": 960,
+  "duration_seconds": 30.0,
+  "voices": [
+    {
+      "name": "v1",
+      "sound_func": "piano_sound",
+      "octave_shift": -2,
+      "h_divisions": 24,
+      "v_divisions": 16,
+      "control_points": [
+        [
+          48.0,
+          260.0
+        ],
+        [
+          182.0,
+          91.28
+        ],
+        [
+          316.0,
+          260.0
+        ],
+        [
+          450.0,
+          428.72
+        ],
+        [
+          584.0,
+          260.00000000000006
+        ],
+        [
+          718.0,
+          91.28
+        ],
+        [
+          852.0,
+          259.99999999999994
+        ]
+      ],
+      "scale_regions": [
+        {
+          "col_start": 0.0,
+          "col_end": 3.8641,
+          "key": "C",
+          "mode": "major"
+        },
+        {
+          "col_start": 3.7864,
+          "col_end": 16.0,
+          "key": "F#",
+          "mode": "major"
+        }
+      ],
+      "zones": [
+        {
+          "x": 38.0,
+          "w": 199.0,
+          "key": "C",
+          "mode": "major",
+          "color_idx": 0
+        },
+        {
+          "x": 233.0,
+          "w": 629.0,
+          "key": "F#",
+          "mode": "major",
+          "color_idx": 1
+        }
+      ]
+    }
+  ]
+}

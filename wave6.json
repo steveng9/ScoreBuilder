@@ -1,0 +1,145 @@
+{
+  "format_version": 1,
+  "bpm": 960,
+  "duration_seconds": 30.0,
+  "voices": [
+    {
+      "name": "v1",
+      "sound_func": "piano_sound",
+      "octave_shift": -2,
+      "h_divisions": 24,
+      "v_divisions": 16,
+      "control_points": [
+        [
+          48.0,
+          260.0
+        ],
+        [
+          93.0,
+          143.0
+        ],
+        [
+          132.0,
+          248.0
+        ],
+        [
+          156.0,
+          188.0
+        ],
+        [
+          191.0,
+          236.0
+        ],
+        [
+          201.0,
+          367.0
+        ],
+        [
+          246.0,
+          246.0
+        ],
+        [
+          292.0,
+          93.0
+        ],
+        [
+          347.0,
+          133.0
+        ],
+        [
+          409.0,
+          118.0
+        ],
+        [
+          457.0,
+          153.0
+        ],
+        [
+          516.0,
+          329.0
+        ],
+        [
+          584.0,
+          260.00000000000006
+        ],
+        [
+          718.0,
+          91.28
+        ],
+        [
+          852.0,
+          259.99999999999994
+        ]
+      ],
+      "scale_regions": [
+        {
+          "col_start": 0.0,
+          "col_end": 1.2621,
+          "key": "C",
+          "mode": "major"
+        },
+        {
+          "col_start": 1.2621,
+          "col_end": 2.0583,
+          "key": "G",
+          "mode": "major"
+        },
+        {
+          "col_start": 2.0583,
+          "col_end": 2.8738,
+          "key": "D",
+          "mode": "major"
+        },
+        {
+          "col_start": 2.8738,
+          "col_end": 3.6311,
+          "key": "A",
+          "mode": "major"
+        },
+        {
+          "col_start": 3.6505,
+          "col_end": 5.3592,
+          "key": "B",
+          "mode": "major"
+        }
+      ],
+      "zones": [
+        {
+          "x": 38.0,
+          "w": 65.0,
+          "key": "C",
+          "mode": "major",
+          "color_idx": 0
+        },
+        {
+          "x": 103.0,
+          "w": 41.0,
+          "key": "G",
+          "mode": "major",
+          "color_idx": 1
+        },
+        {
+          "x": 144.0,
+          "w": 42.0,
+          "key": "D",
+          "mode": "major",
+          "color_idx": 2
+        },
+        {
+          "x": 186.0,
+          "w": 39.0,
+          "key": "A",
+          "mode": "major",
+          "color_idx": 3
+        },
+        {
+          "x": 226.0,
+          "w": 88.0,
+          "key": "B",
+          "mode": "major",
+          "color_idx": 4
+        }
+      ]
+    }
+  ]
+}

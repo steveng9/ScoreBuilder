@@ -1,0 +1,191 @@
+Computer Sonata in 24-keys
+(March 2026)
+by Steven Golob
+
+voice: v1, @piano_sound, 0
+voice: v2, @piano_sound, 0
+voice: v3, @piano_sound, -1
+voice: v4, @piano_sound, -1
+
+qtr_note = 60
+C major
+
+
+#1. C major → A minor
+#(C major opening)
+#I – vi – ii⁶ – V⁷ – vi
+#Reinterpret vi as i in A minor
+#Chords:
+#C – Am – Dm/F – G7 – Am
+
+8.2, 7.1, 8.1, 6.3, 5.1, 4.2,  | 3.2, 2.1-, 3.1, 2.1, 4.3, 3.1
+3.2, 2.1, 3.4, 2.3,            | -1.3, -1.1, -1.2, -1.1, -2.2
+5.1, 6.1, 7.1, 8.1, 7f.1, 8.5, | 9.1, 2.1, 2.2, 2.5
+1.3, 0.1, -1.4, -2.2,          | -3.3, -3.1, -2.5
+
+
+
+qtr_note = 60
+A minor
+
+#2. A minor → E♭ major
+#Chromatic mediant move.
+#i – iv – V – Ger+6 – V/♭VI → ♭VI
+#Chords:
+#Am – Dm – E – F–A–C–D♯ (Ger+6) – B♭7 → E♭
+
+-2.4
+-6.4
+-4.4
+-6.4
+
+
+
+
+#3. E♭ major → B minor
+#Remote but smooth via diminished reinterpretation.
+#I – vi – ii°7 – V/V – V
+#Reinterpret V as F# major → B minor
+#Chords:
+#E♭ – Cm – D°7 – C#7 – F# → Bm
+
+#4. B minor → G major
+#Relative modulation.
+#i – iv – V/V – V – I (new key)
+#Chords:
+#Bm – Em – A7 – D – G
+
+#5. G major → C minor
+#Neapolitan pivot.
+#I – iii – N6 – V/iv – iv (new key)
+#Chords:
+#G – Bm – D♭/F – G7 – Cm
+
+#6. C minor → A♭ major
+#Classic relative major.
+#i – iv – V7 – III
+#Chords:
+#Cm – Fm – G7 – A♭
+
+#7. A♭ major → E major
+#Chromatic mediant again.
+#I – V⁷/vi – vi – Fr+6 – V → I
+#Chords:
+#A♭ – E7/G# – Fm – A–C–D–F# – B7 – E
+
+#8. E major → C major
+#Descending chromatic mediant.
+#I – IV – vii°7/V – V – I (new)
+#Chords:
+#E – A – F#°7 – G7 – C
+
+#9. C major → F# minor
+#Dramatic tritone pivot.
+#I – V/V – V – Ger+6 – V → i
+#Chords:
+#C – D7 – G – B♭–D–F–G# – C#7 – F#m
+
+#10. F# minor → A major
+#Relative major.
+#i – iv – V – I
+#Chords:
+#F#m – Bm – E7 – A
+
+#11. A major → D minor
+#Neapolitan reinterpretation.
+#I – iii – N6 – V → i
+#Chords:
+#A – C#m – E♭/G – A7 – Dm
+
+#12. D minor → F major
+#Relative major.
+#i – iv – V – I
+#Chords:
+#Dm – Gm – A7 – F
+
+#13. F major → B♭ minor
+#Borrowed chromatic shift.
+#I – V/V – V – ♭II – i
+#Chords:
+#F – C7 – F7 – C♭ – B♭m
+
+#14. B♭ minor → D major
+#Diminished reinterpretation.
+#i – iv – vii°7 – V – I
+#Chords:
+#B♭m – E♭m – A°7 – A7 – D
+
+#15. D major → G minor
+#Secondary dominant reinterpretation.
+#I – V/V – V – i
+#Chords:
+#D – E7 – A7 – Gm
+
+#16. G minor → B major
+#Augmented sixth pivot.
+#i – iv – Fr+6 – V → I
+#Chords:
+#Gm – Cm – E♭–G–A–C# – F#7 – B
+
+#17. B major → E minor
+#Modal shift.
+#I – V/V – V – i
+#Chords:
+#B – F#7 – B7 – Em
+
+#18. E minor → C# minor
+#Chromatic mediant again.
+#i – iv – V/V – V – i
+#Chords:
+#Em – Am – D#7 – G#7 – C#m
+
+#19. C# minor → G♭ major
+#Diminished pivot.
+#i – vii°7 – V – I
+#Chords:
+#C#m – B#°7 – D♭7 – G♭
+
+#20. G♭ major → E♭ minor
+#Relative minor.
+#I – ii – V – i
+#Chords:
+#G♭ – A♭m – D♭7 – E♭m
+
+#21. E♭ minor → A major
+#Augmented reinterpretation.
+#i – iv – Ger+6 – V → I
+#Chords:
+#E♭m – A♭m – C♭–E♭–F#–A – E7 – A
+
+#22. A major → F minor
+#Neapolitan pivot.
+#I – iii – N6 – V – i
+#Chords:
+#A – C#m – G♭/B♭ – C7 – Fm
+
+#23. F minor → D♭ major
+#Relative major.
+#i – iv – V – I
+#Chords:
+#Fm – B♭m – C7 – D♭
+
+#24. D♭ major → G major
+#Chromatic mediant leap.
+#I – V/V – V – I
+#Chords:
+#D♭ – A7 – D7 – G
+
+#25. G major → C major (final return)
+#I – vi – ii – V7 – I
+#Chords:
+#G – Em – Dm – G7 – C
+
+
+
+
+
+
+
+
+
+

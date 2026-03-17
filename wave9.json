@@ -1,0 +1,163 @@
+{
+  "format_version": 1,
+  "bpm": 9600,
+  "duration_seconds": 14.0,
+  "voices": [
+    {
+      "name": "v1",
+      "sound_func": "piano_sound",
+      "octave_shift": -2,
+      "h_divisions": 24,
+      "v_divisions": 16,
+      "control_points": [
+        [
+          48.0,
+          260.0
+        ],
+        [
+          112.0,
+          240.0
+        ],
+        [
+          182.0,
+          91.28
+        ],
+        [
+          241.0,
+          199.0
+        ],
+        [
+          315.0,
+          137.0
+        ],
+        [
+          375.0,
+          374.0
+        ],
+        [
+          416.0,
+          296.0
+        ],
+        [
+          450.0,
+          428.72
+        ],
+        [
+          524.0,
+          190.0
+        ],
+        [
+          584.0,
+          260.00000000000006
+        ],
+        [
+          718.0,
+          91.28
+        ],
+        [
+          752.0,
+          200.0
+        ],
+        [
+          852.0,
+          259.99999999999994
+        ]
+      ],
+      "scale_regions": [
+        {
+          "col_start": 0.0,
+          "col_end": 2.233,
+          "key": "C",
+          "mode": "major"
+        },
+        {
+          "col_start": 2.2524,
+          "col_end": 4.3689,
+          "key": "Eb",
+          "mode": "major"
+        },
+        {
+          "col_start": 4.3495,
+          "col_end": 6.0777,
+          "key": "F#",
+          "mode": "major"
+        },
+        {
+          "col_start": 6.0583,
+          "col_end": 8.0971,
+          "key": "C",
+          "mode": "major"
+        },
+        {
+          "col_start": 8.0777,
+          "col_end": 9.4175,
+          "key": "D",
+          "mode": "major"
+        },
+        {
+          "col_start": 9.4175,
+          "col_end": 12.0777,
+          "key": "Eb",
+          "mode": "major"
+        },
+        {
+          "col_start": 12.0777,
+          "col_end": 16.0,
+          "key": "G",
+          "mode": "major"
+        }
+      ],
+      "zones": [
+        {
+          "x": 38.0,
+          "w": 115.0,
+          "key": "C",
+          "mode": "major",
+          "color_idx": 0
+        },
+        {
+          "x": 154.0,
+          "w": 109.0,
+          "key": "Eb",
+          "mode": "major",
+          "color_idx": 1
+        },
+        {
+          "x": 262.0,
+          "w": 89.0,
+          "key": "F#",
+          "mode": "major",
+          "color_idx": 2
+        },
+        {
+          "x": 350.0,
+          "w": 105.0,
+          "key": "C",
+          "mode": "major",
+          "color_idx": 3
+        },
+        {
+          "x": 454.0,
+          "w": 69.0,
+          "key": "D",
+          "mode": "major",
+          "color_idx": 4
+        },
+        {
+          "x": 523.0,
+          "w": 137.0,
+          "key": "Eb",
+          "mode": "major",
+          "color_idx": 5
+        },
+        {
+          "x": 660.0,
+          "w": 202.0,
+          "key": "G",
+          "mode": "major",
+          "color_idx": 0
+        }
+      ]
+    }
+  ]
+}

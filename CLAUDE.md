@@ -1,24 +1,59 @@
-# CLAUDE.md — ScoreBuilder
+# CLAUDE.md — Microtonal Music Workspace
 
 ## What this repo is
 
-This is a **Python** project for composing and generating `.txt` score files in the microtonal text notation protocol. Those `.txt` files are then executed in a separate MATLAB repository (`~/Documents/music/MATLAB/`) which synthesizes and plays the audio.
+A unified workspace for composing and synthesizing microtonal music. It contains:
 
-This repo does **not** do any audio synthesis. Its sole job is to produce well-formed `.txt` score files.
+- **Python tools** (repo root) — `wave_editor.py` / `wave_translator.py` for drawing spline-based melodic curves and converting them to score `.txt` files.
+- **MATLAB library** (`matlab/`) — the `+microtonal` synthesis and notation engine that parses `.txt` scores and renders audio.
+
+The `.txt` score file format is the contract between the Python side and the MATLAB side. Preserve it exactly.
 
 ---
 
-## The companion MATLAB repo
+## Repo layout
 
-Location: `/Users/stevengolob/Documents/music/MATLAB/`
+```
+ScoreBuilder/
+├── wave_editor.py          — Tkinter GUI for drawing spline waves with modulation zones
+├── wave_translator.py      — converts .wave.json → .txt score file
+├── main.py                 — launches wave_editor
+├── wave*.json              — saved wave editor sessions
+├── wave*.txt               — translated score files (output of wave_translator)
+└── matlab/
+    ├── +microtonal/        — MATLAB package: scales, audio, notation, rhythm
+    │   ├── +scales/        — TET and JI scale generation
+    │   ├── +audio/         — audio buffer mixing and playback
+    │   ├── +notation/      — score text parsing and synthesis pipeline
+    │   └── +rhythm/        — stochastic rhythm generators
+    ├── sounds/             — 29 synthesis functions (@piano_sound, @crystal_bowl, etc.)
+    ├── scores/             — .txt score files (input to MATLAB renderer)
+    ├── audio_files/        — rendered .wav output files
+    ├── composition_scripts/ — standalone algorithmic composition scripts
+    ├── API_REFERENCE.md    — full MATLAB API docs
+    └── README.md           — MATLAB library description
+```
 
-To render a score from MATLAB:
+---
+
+## Running MATLAB
+
+**Always `cd` into `matlab/` before running MATLAB scripts**, so the `+microtonal` package is on the path:
+
 ```matlab
+% from matlab/
 buf = microtonal.notation.notation_to_audio('scores/MyScore.txt');
 microtonal.audio.play('my_score', buf);
 ```
 
-Score files go in `~/Documents/music/MATLAB/scores/`.
+Score files live in `matlab/scores/`. Audio output goes to `matlab/audio_files/`.
+
+Key MATLAB files to read when debugging audio or score-parsing issues:
+
+- `matlab/+microtonal/+notation/parse_notation.m`   — score text → section/voice structs
+- `matlab/+microtonal/+notation/notation_to_audio.m` — section structs → audio pipeline
+- `matlab/+microtonal/+audio/build_audio_buffer.m`  — note arrays → waveform buffer
+- `matlab/sounds/piano_sound.m`                     — main synthesis function
 
 ---
 
@@ -58,9 +93,9 @@ voice: soprano, @piano_sound, 0
 voice: alto,    @piano_sound, -1
 ```
 
-- `@piano_sound` references a MATLAB function in `~/Documents/music/MATLAB/sounds/`
+- `@piano_sound` references a MATLAB function in `matlab/sounds/`
 - `octave_shift`: integer, shifts all notes in this voice up/down by N octaves
-- Available sound functions: `piano_sound` (most commonly used), others in `sounds/`
+- Available sound functions: see `matlab/API_REFERENCE.md` for the full table
 
 ### Tuning (optional, in preamble)
 
@@ -99,15 +134,15 @@ Ab [1/1,9/8,5/4,4/3,3/2,5/3,15/8]   ← explicit JI ratios
   - Negative values go below tonic: `-1` = leading tone below, `-2` = 7th below, etc.
   - `0` = leading tone (one step below tonic in scale)
 - `s` / `f`: optional sharp / flat accidental (e.g. `4s.2`, `7f.1`)
-- `duration`: in **eighth notes** (1=eighth, 2=quarter, 3=dotted quarter, 4=half, 6=dotted half, 8=whole)
-- `-` at end: sustain to measure bar (e.g. `5.1-`)
+- `duration`: in **eighth notes** (1=eighth, 2=quarter, 3=dotted quarter, 4=half, 6=dotted half, 8=whole); any positive integer is valid
+- `-` at end: sustain to measure bar (e.g. `5.1-`) — **avoid in wave_translator output** (stretches to full section with TICKS_PER_MEASURE=99999)
 
 Examples:
 ```
 3.2      = 3rd degree, quarter note (2 eighths)
 7f.1     = flat 7th, eighth note
 -2.4     = 2nd degree below tonic, half note
-1.1-     = tonic, eighth note duration, sustained until | barline
+1.1-     = tonic, eighth note, sustained until | barline
 ```
 
 ### Rests: `r.<duration>`
@@ -143,30 +178,74 @@ C major
 
 ---
 
-## What to build in Python
+## MATLAB Architecture
 
-The goal is a Python library/toolkit that **generates these `.txt` score files** algorithmically or interactively. Ideas (to be decided with the user):
+### Package structure (`matlab/+microtonal/`)
 
-- Classes representing `Score`, `Voice`, `Section`, `Measure`, `Note`, `Rest`
-- A builder/DSL for constructing scores programmatically
-- Algorithmic composition tools (chord progressions, voice leading, counterpoint rules, serialist generators, etc.)
-- A validator that checks measure-length consistency before writing to file
-- Output: write a `.txt` file in the exact format above, ready to drop into `~/Documents/music/MATLAB/scores/`
+- **`+scales/`** — `tet_scales()` for any N-TET, `get_mode(tet, mode_name)` for predefined steps (12/19/31/53-TET), `ratio_scale()` for JI, `get_ji_scales()`, `note_to_freq()`, `cents()`, `compare_tunings()`
+- **`+audio/`** — `build_audio_buffer()` mixes note arrays into a waveform with 20ms fade envelopes; `play()` saves WAV and plays back
+- **`+notation/`** — `parse_notation()` reads `.txt` → section/voice structs; `notation_to_audio()` is the end-to-end pipeline; `format_score()` validates/aligns score files; `generate_notation()` generates random compositions
+- **`+rhythm/`** — `stochastic_rhythm()` generates onset times/durations via: uniform, poisson, euclidean, fibonacci, accelerando, lcm
 
-The score format is the **contract** between this Python project and the MATLAB renderer. Preserve it exactly.
+### Sound functions (`matlab/sounds/`)
 
----
+Signature: `sound = func_name(freq, fs, duration)`. Referenced in scores as `@func_name`.
 
-## Example scores (for reference)
+Key sounds: `@piano_sound`, `@crystal_bowl`, `@rich_bell`, `@ethereal_pad`, `@soft_kalimba`, `@tubular_bell`, `@wind_chime`, `@exotic_gamelan`, `@vibraphone`, `@shakuhachi`, `@breathy_flute`, and 18 more. Full table in `matlab/API_REFERENCE.md`.
 
-Three reference scores live in the MATLAB repo at `~/Documents/music/MATLAB/scores/`:
+### Adding a new TET system
 
-- `Xenakis_SixChansons.txt` — 6-voice piano piece, C# major, demonstrates voice layout and negative degrees
-- `Stravinsky_sonataDuet.txt` — 4-voice, F major, demonstrates `s`/`f` accidentals, sustain `-`, and `|` measure barlines with aligned columns
-- `sonata_in_24.txt` — work-in-progress 4-voice sonata cycling through 24 keys; mostly commented-out plan sections — good example of how comments and blank lines structure a long score
+Create `matlab/+microtonal/+scales/get_<N>tet_modes.m` returning a struct with mode names as fields and step arrays as values. `get_mode()` will auto-discover it.
 
 ---
 
-## Where to pick up
+## Python Tools
 
-The user has not yet written any Python code in this repo. The next step is to **design the Python architecture** for score generation and start implementing it. Start by asking the user what kind of composition workflow they have in mind, then build accordingly.
+### wave_editor.py
+
+Tkinter GUI for drawing a spline-based melodic curve over a time-pitched grid. Features:
+- Modulation zones: assign different key/mode/scale regions to time ranges
+- Multiple voices with configurable sound function and octave shift
+- Saves state to `.wave.json`
+
+### wave_translator.py
+
+Converts `.wave.json` → `.txt` score file using crossing-based pitch detection.
+
+Key constants (tune at top of file):
+- `SCORE_BPM = 9600` — eighth-note tick rate (≈3 ms/tick); high value = fine time resolution
+- `TICKS_PER_MEASURE = 99999` — effectively one measure per section (no barlines)
+- `MAX_NOTE_TICKS = 250` — max duration before re-attack (≈0.78s at BPM=9600)
+
+CLI usage:
+```bash
+python wave_translator.py input.wave.json matlab/scores/output.txt
+```
+
+Or from Python:
+```python
+from wave_translator import translate
+translate('wave10.json', 'matlab/scores/wave10.txt')
+```
+
+---
+
+## Reference scores
+
+In `matlab/scores/`:
+
+- `Xenakis_SixChansons.txt` — 6-voice piano, C# major; demonstrates voice layout and negative degrees
+- `Stravinsky_sonataDuet.txt` — 4-voice F major; demonstrates `s`/`f` accidentals, sustain `-`, aligned columns
+- `sonata_in_24.txt` — WIP 4-voice sonata cycling through 24 keys; good example of comments/blank lines structuring a long score
+
+---
+
+## Python work to build
+
+The Python side is nascent. Potential directions:
+
+- Classes: `Score`, `Voice`, `Section`, `Measure`, `Note`, `Rest`
+- Builder/DSL for constructing scores programmatically
+- Algorithmic composition tools (chord progressions, voice leading, counterpoint, serialist generators)
+- Validator checking measure-length consistency before writing `.txt`
+- Output: write `.txt` to `matlab/scores/`, ready for MATLAB renderer

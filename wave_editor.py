@@ -53,7 +53,7 @@ _PR      = 7          # control-point radius
 _EDGE    = 8          # zone-edge hit width (px each side)
 
 # ── Shared constant ─────────────────────────────────────────────────────────
-SCORE_BPM = 960
+SCORE_BPM = 9600
 
 # ── Scale vocabulary ────────────────────────────────────────────────────────
 _KEYS  = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B']

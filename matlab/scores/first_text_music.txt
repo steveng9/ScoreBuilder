@@ -1,0 +1,16 @@
+My First Piece
+(2026)
+transcribed by Your Name
+
+voice: v2, @crystal_bowl_with_pop, 0
+voice: v3, @crystal_bowl_with_pop, 0
+voice: v4, @crystal_bowl_with_pop, -1
+voice: v5, @crystal_bowl_with_pop, -2
+
+qtr_note = 80
+D major
+
+8.1-, 9.1-, 10.1-, 11.1-, | r.4,                | r.4,                    | r.4
+r.4,                      | 1.1, 2.1, 3.1, 4.1, | r.4,                    | r.4
+r.4,                      | r.4,                | 1.1-, 2.1-, 3.1-, 4.1-, | r.4
+r.4,                      | r.4,                | r.4,                    | 1.1, 0.1, -1.1, -2.1
