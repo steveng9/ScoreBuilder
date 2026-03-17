@@ -169,7 +169,7 @@ def _nearest_degree(ref_midi: float, tonic_midi: int, intervals: list) -> int:
 
 
 def _build_row_degree_maps(sections_info: list, h_divisions: int) -> list:
-    """Build a per-section row→degree-string dict with pitch-continuous remapping.
+    """Build a per-section row→degree-string dict using a centre-anchored map.
 
     Design
     ------
@@ -178,15 +178,12 @@ def _build_row_degree_maps(sections_info: list, h_divisions: int) -> list:
     rows at constant speed produces evenly-spaced note events regardless of the
     scale's interval structure.
 
-    First section
-        The middle row is anchored to _CENTER_MIDI (≈ C4).  Rows above/below
-        the centre are consecutive scale degrees above/below that anchor.
-
-    Subsequent sections
-        Each row carries a "pitch context" (the MIDI pitch it produced in the
-        previous section).  The new degree is the one in the new key whose pitch
-        is nearest to that context.  For maximally-distant keys (e.g. C↔F#)
-        the remap is at most ½ semitone — completely smooth modulation.
+    For every section (not just the first) the centre row maps to the scale
+    degree nearest to _CENTER_MIDI (C4), and rows above/below radiate as
+    consecutive scale degrees.  This guarantees pitch-monotonic grids across
+    any key change provided the same scale TYPE is used in every zone: higher
+    row always means higher pitch, and common tones near C4 stay at the same
+    row.
 
     Args
         sections_info : list of {'key': str, 'mode': str}, one per section
@@ -196,30 +193,16 @@ def _build_row_degree_maps(sections_info: list, h_divisions: int) -> list:
         List of {row(int): degree_str}, parallel to sections_info.
     """
     maps: list = []
-    pitch_context: dict = {}   # row → MIDI pitch produced in the previous section
+    center_row = (h_divisions + 1) // 2
 
-    for sec_idx, sec in enumerate(sections_info):
+    for sec in sections_info:
         key        = sec.get('key', 'C')
         mode       = sec.get('mode', 'major')
         intervals  = _MODE_INTERVALS.get(mode, _MODE_INTERVALS['major'])
         tonic_midi = _TONIC_MIDI.get(key, 24)
-        row_map: dict = {}
-
-        if sec_idx == 0:
-            # Centre the grid on _CENTER_MIDI
-            center_row = (h_divisions + 1) // 2
-            d_center   = _nearest_degree(_CENTER_MIDI, tonic_midi, intervals)
-            for row in range(1, h_divisions + 1):
-                deg = d_center + (row - center_row)
-                row_map[row] = str(deg)
-                pitch_context[row] = float(_degree_to_midi(deg, tonic_midi, intervals))
-        else:
-            for row in range(1, h_divisions + 1):
-                ref = pitch_context.get(row, float(_CENTER_MIDI))
-                deg = _nearest_degree(ref, tonic_midi, intervals)
-                row_map[row] = str(deg)
-                pitch_context[row] = float(_degree_to_midi(deg, tonic_midi, intervals))
-
+        d_center   = _nearest_degree(_CENTER_MIDI, tonic_midi, intervals)
+        row_map    = {row: str(d_center + (row - center_row))
+                      for row in range(1, h_divisions + 1)}
         maps.append(row_map)
 
     return maps

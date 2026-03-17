@@ -10,12 +10,19 @@ Public API
 """
 
 import json
+import threading
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, ttk
+from tkinter import filedialog, messagebox, ttk
 from typing import Optional, Tuple
 
 import numpy as np
+
+try:
+    import wave_synth as _synth
+    _HAS_SYNTH = True
+except ImportError:
+    _HAS_SYNTH = False
 
 try:
     from scipy.interpolate import CubicSpline
@@ -257,6 +264,16 @@ class WaveEditor:
 
         ttk.Button(foot, text="Save…", command=self._save).pack(side=tk.LEFT, padx=(6, 3))
         ttk.Button(foot, text="Load…", command=self._load).pack(side=tk.LEFT, padx=(0, 4))
+
+        tk.Frame(foot, bg=_OVERLAY, width=1).pack(side=tk.LEFT, fill=tk.Y, padx=6)
+
+        ttk.Button(foot, text="▶ Play",     command=self._play).pack(side=tk.LEFT, padx=(6, 3))
+        ttk.Button(foot, text="■ Stop",     command=self._stop).pack(side=tk.LEFT, padx=(0, 3))
+        ttk.Button(foot, text="Save WAV…",  command=self._save_wav).pack(side=tk.LEFT, padx=(0, 8))
+
+        self._status_var = tk.StringVar(value="")
+        tk.Label(foot, textvariable=self._status_var, bg=_SURFACE, fg=_GREEN,
+                 font=('Helvetica', 8)).pack(side=tk.LEFT, padx=(0, 8))
 
     # ── Zone logic ─────────────────────────────────────────────────────────
 
@@ -585,6 +602,67 @@ class WaveEditor:
             'scale_regions':  self._zones_to_scale_regions(),
             'zones':          [dict(z) for z in self._zones],
         }
+
+    def _wave_dict(self) -> dict:
+        """Return the current editor state as a wave JSON dict (without saving to disk)."""
+        return {
+            'format_version': 1,
+            'bpm': SCORE_BPM,
+            'duration_seconds': float(self._duration_var.get() or 30),
+            'voices': [self._voice_dict()],
+        }
+
+    def _play(self) -> None:
+        if not _HAS_SYNTH:
+            messagebox.showerror("Missing module",
+                                 "wave_synth.py not found next to wave_editor.py.")
+            return
+        self._status_var.set("Rendering…")
+        self.root.update_idletasks()
+
+        def _worker():
+            try:
+                _synth.play(self._wave_dict(), blocking=True)
+                self.root.after(0, lambda: self._status_var.set("Done"))
+            except RuntimeError as e:
+                msg = str(e)
+                self.root.after(0, lambda: self._status_var.set("No audio device"))
+                self.root.after(0, lambda: messagebox.showwarning("Playback", msg))
+
+        threading.Thread(target=_worker, daemon=True).start()
+        self._status_var.set("Playing…")
+
+    def _stop(self) -> None:
+        if _HAS_SYNTH:
+            _synth.stop()
+            self._status_var.set("Stopped")
+
+    def _save_wav(self) -> None:
+        if not _HAS_SYNTH:
+            messagebox.showerror("Missing module",
+                                 "wave_synth.py not found next to wave_editor.py.")
+            return
+        self.root.update()
+        self.root.lift()
+        path = filedialog.asksaveasfilename(
+            title='Save WAV', defaultextension='.wav',
+            filetypes=[('WAV audio', '*.wav'), ('All files', '*.*')],
+        )
+        if not path:
+            return
+        self._status_var.set("Rendering…")
+        self.root.update_idletasks()
+
+        def _worker():
+            try:
+                _synth.render(self._wave_dict(), output_wav_path=path)
+                self.root.after(0, lambda: self._status_var.set(
+                    f"Saved {Path(path).name}"))
+            except Exception as e:
+                self.root.after(0, lambda: self._status_var.set("Error"))
+                self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     def _save(self) -> None:
         self.root.update()
