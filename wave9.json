@@ -5,9 +5,9 @@
   "voices": [
     {
       "name": "v1",
-      "sound_func": "piano_sound",
-      "octave_shift": -2,
-      "h_divisions": 24,
+      "sound_func": "sampled_piano",
+      "octave_shift": -1,
+      "h_divisions": 48,
       "v_divisions": 16,
       "control_points": [
         [

@@ -7,7 +7,7 @@
       "name": "v1",
       "sound_func": "piano_sound",
       "octave_shift": -1,
-      "h_divisions": 24,
+      "h_divisions": 48,
       "v_divisions": 26,
       "control_points": [
         [
