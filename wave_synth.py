@@ -59,9 +59,36 @@ except ImportError:
     _HAS_SD = False
 
 # ── Audio constants ────────────────────────────────────────────────────────
-FS             = 44100    # sample rate
-NOTE_DURATION  = 2.5      # seconds each triggered note is synthesised for
-MAX_HOLD_SEC   = 1.5      # re-attack same note if held longer than this (s)
+FS           = 44100   # sample rate
+_MIX_TAIL    = 15.0    # extra seconds of mix buffer after the piece ends
+                       # (long enough for the slowest-decaying note to finish)
+
+# Natural decay duration per synth — used in render() so each instrument
+# rings for its physically appropriate length rather than a fixed cutoff.
+# sampled_piano uses 0 (sentinel) meaning "return full sample, no padding".
+_SYNTH_DECAY: dict = {
+    'piano_sound':      5.0,
+    'piano':            5.0,
+    'bell':             15.0,
+    'crystal_bowl':     15.0,
+    'crystal_bowl_with_pop': 15.0,
+    'rich_bell':        15.0,
+    'soft_bell':        15.0,
+    'tubular_bell':     12.0,
+    'marimba':          2.5,
+    'soft_marimba':     2.5,
+    'soft_kalimba':     2.5,
+    'tonal_percussion': 2.5,
+    'vibraphone':       4.0,
+    'pad':              10.0,
+    'ethereal_pad':     10.0,
+    'layered_chorus':   10.0,
+    'shimmer':          6.0,
+    'magic_shimmer':    6.0,
+    'bright_crystalline': 6.0,
+    'sampled_piano':    0,   # sentinel: return full sample length
+    'salamander':       0,
+}
 
 # ── Canvas geometry (must match wave_editor.py) ────────────────────────────
 _CW     = 900
@@ -256,20 +283,12 @@ def _sampled_piano(freq: float, duration: float, fs: int = FS) -> np.ndarray:
     # Approximate ratio as a small-integer fraction for resample_poly
     frac      = _Fraction(ratio).limit_denominator(1000)
     resampled = _resample_poly(audio, frac.numerator, frac.denominator)
-    resampled = resampled.astype(np.float32)
 
-    # Trim or zero-pad to the requested duration
-    n_target = int(duration * fs)
-    if len(resampled) >= n_target:
-        out = resampled[:n_target].copy()
-        # Smooth fade-out at end to avoid clicks
-        fade = min(int(0.04 * fs), n_target // 4)
-        out[-fade:] *= np.linspace(1.0, 0.0, fade, dtype=np.float32)
-    else:
-        out = np.zeros(n_target, dtype=np.float32)
-        out[:len(resampled)] = resampled
-
-    return out
+    # Return the full natural sample — no truncation, no zero-padding.
+    # render() clips it to the mix buffer boundary. This way each note
+    # rings for exactly as long as the recorded decay, with no artificial
+    # cutoff that would create rhythmic dampening patterns.
+    return resampled.astype(np.float32)
 
 
 # ── Synth map ──────────────────────────────────────────────────────────────
@@ -479,7 +498,7 @@ def render(wave_data, output_wav_path: Optional[str] = None,
     dur_sec = float(wave_data['duration_seconds'])
     voices  = wave_data['voices']
     # Extra tail so the last notes can ring out naturally
-    n_total = int(dur_sec * fs) + int(NOTE_DURATION * fs)
+    n_total = int(dur_sec * fs) + int(_MIX_TAIL * fs)
     mix     = np.zeros(n_total, dtype=np.float64)
 
     for v in voices:
@@ -487,7 +506,9 @@ def render(wave_data, output_wav_path: Optional[str] = None,
         v_div      = int(v.get('v_divisions', 16))
         regions    = v.get('scale_regions', [])
         oct_shift  = int(v.get('octave_shift', 0))
-        synth_func = _get_synth(v.get('sound_func', 'piano_sound'))
+        sound_name = v.get('sound_func', 'piano_sound')
+        synth_func = _get_synth(sound_name)
+        note_dur   = _SYNTH_DECAY.get(sound_name, 5.0)  # 0 = full sample length
 
         events = _crossing_events(v['control_points'], h_div, dur_sec)
 
@@ -515,8 +536,9 @@ def render(wave_data, output_wav_path: Optional[str] = None,
             if freq <= 20.0 or freq > 20000.0 or not np.isfinite(freq):
                 continue
 
-            # Synthesise note
-            note = synth_func(freq, NOTE_DURATION, fs)
+            # Synthesise note for its natural decay duration.
+            # note_dur == 0 means _sampled_piano returns full sample length.
+            note = synth_func(freq, note_dur, fs)
 
             # Mix into buffer at the exact floating-point start time
             start = int(t_start * fs)
