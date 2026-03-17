@@ -372,7 +372,6 @@ def render(wave_data, output_wav_path: Optional[str] = None,
         synth_func = _get_synth(v.get('sound_func', 'piano_sound'))
 
         events = _crossing_events(v['control_points'], h_div, dur_sec)
-        events = _insert_reattacks(events, MAX_HOLD_SEC)
 
         for i, (t_start, row) in enumerate(events[:-1]):
             if row is None:

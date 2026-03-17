@@ -65,6 +65,22 @@ SCORE_BPM = 9600
 # ── Scale vocabulary ────────────────────────────────────────────────────────
 _KEYS  = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B']
 _MODES = ['major', 'minor', 'dorian', 'phrygian', 'lydian', 'mixolydian', 'locrian']
+_SOUNDS = [
+    'piano_sound',
+    'bell',
+    'crystal_bowl',
+    'rich_bell',
+    'marimba',
+    'soft_kalimba',
+    'tonal_percussion',
+    'vibraphone',
+    'pad',
+    'ethereal_pad',
+    'shimmer',
+    'magic_shimmer',
+    'bright_crystalline',
+    'breathy_flute',
+]
 
 
 class WaveEditor:
@@ -91,7 +107,7 @@ class WaveEditor:
         self.root.configure(bg=_BG)
         self.root.resizable(False, False)
 
-        self.h_divisions = tk.IntVar(value=8)
+        self.h_divisions = tk.IntVar(value=16)
         self.v_divisions = tk.IntVar(value=16)
 
         self._pts: list = []
@@ -153,8 +169,8 @@ class WaveEditor:
 
         # Pitch-row slider
         lbl("Pitch rows", 9, _SUBTEXT).pack(pady=(6, 0))
-        self._h_lbl = lbl("8", 12, _BLUE)
-        ttk.Scale(panel, from_=2, to=24, variable=self.h_divisions,
+        self._h_lbl = lbl("16", 12, _BLUE)
+        ttk.Scale(panel, from_=2, to=48, variable=self.h_divisions,
                   orient=tk.HORIZONTAL, command=self._on_grid_change,
                   ).pack(fill=tk.X, padx=16, pady=2)
         self._h_lbl.pack()
@@ -238,7 +254,9 @@ class WaveEditor:
 
         self._sound_var = tk.StringVar(value='piano_sound')
         lbl("sound").pack(side=tk.LEFT, padx=(0, 2))
-        entry(self._sound_var, 13).pack(side=tk.LEFT, padx=(0, 8))
+        ttk.Combobox(foot, textvariable=self._sound_var, values=_SOUNDS,
+                     width=16, state='readonly',
+                     font=('Helvetica', 9)).pack(side=tk.LEFT, padx=(0, 8))
 
         self._octave_var = tk.IntVar(value=0)
         lbl("octave").pack(side=tk.LEFT, padx=(0, 4))
