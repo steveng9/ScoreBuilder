@@ -425,6 +425,20 @@ def render(wave_data, output_wav_path: Optional[str] = None,
     return audio
 
 
+def _native_fs() -> int:
+    """Return the output device's preferred sample rate.
+
+    Using the device's native rate avoids the PaMacCore -50 (kAudio_ParamError)
+    that fires on macOS when PortAudio tries to force a non-native rate.
+    Falls back to FS (44100) if the query fails.
+    """
+    try:
+        info = sd.query_devices(sd.default.device[1], 'output')
+        return int(info['default_samplerate'])
+    except Exception:
+        return FS
+
+
 def play(wave_data, blocking: bool = True) -> None:
     """Render and play through speakers.
 
@@ -436,8 +450,9 @@ def play(wave_data, blocking: bool = True) -> None:
             "Install it with:  pip install sounddevice\n"
             "Or save a WAV file instead."
         )
-    audio = render(wave_data)
-    sd.play(audio, FS)
+    rate  = _native_fs()
+    audio = render(wave_data, fs=rate)
+    sd.play(audio, samplerate=rate, blocksize=2048)
     if blocking:
         sd.wait()
 
