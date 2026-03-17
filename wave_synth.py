@@ -40,6 +40,19 @@ except ImportError:
     _HAS_SCIPY = False
 
 try:
+    from scipy.signal import resample_poly as _resample_poly
+    from fractions import Fraction as _Fraction
+    _HAS_SCIPY_SIGNAL = True
+except ImportError:
+    _HAS_SCIPY_SIGNAL = False
+
+try:
+    import soundfile as _sf
+    _HAS_SOUNDFILE = True
+except ImportError:
+    _HAS_SOUNDFILE = False
+
+try:
     import sounddevice as sd
     _HAS_SD = True
 except ImportError:
@@ -158,6 +171,109 @@ def _shimmer(freq: float, duration: float, fs: int = FS) -> np.ndarray:
     return sig
 
 
+# ── Salamander Grand Piano (sample-based) ─────────────────────────────────
+
+_SAMPLES_DIR = (
+    __import__('pathlib').Path(__file__).parent / 'samples' / 'salamander'
+)
+
+# Every note sampled in the Salamander archive: minor thirds A0 → C8.
+# (name, MIDI number) — name matches Salamander filename stems.
+_SAMPLE_NOTES: list = [
+    ('A0',  21), ('C1',  24), ('Ds1', 27), ('Fs1', 30),
+    ('A1',  33), ('C2',  36), ('Ds2', 39), ('Fs2', 42),
+    ('A2',  45), ('C3',  48), ('Ds3', 51), ('Fs3', 54),
+    ('A3',  57), ('C4',  60), ('Ds4', 63), ('Fs4', 66),
+    ('A4',  69), ('C5',  72), ('Ds5', 75), ('Fs5', 78),
+    ('A5',  81), ('C6',  84), ('Ds6', 87), ('Fs6', 90),
+    ('A6',  93), ('C7',  96), ('Ds7', 99), ('Fs7', 102),
+    ('A7', 105), ('C8', 108),
+]
+
+_sample_cache: dict = {}   # filename → np.ndarray at its native sample rate
+_sample_fs_cache: dict = {}  # filename → native sample rate
+
+
+def _load_sample(stem: str, velocity: int = 8):
+    """Load a Salamander FLAC file, returning (audio_array, sample_rate).
+
+    Tries the requested velocity, then nearby layers if that file is absent.
+    Returns (None, None) if no file can be found.
+    """
+    for vel in [velocity, velocity + 2, velocity - 2,
+                velocity + 4, velocity - 4, 1, 16]:
+        if vel < 1 or vel > 16:
+            continue
+        fname = f"{stem}v{vel}.flac"
+        if fname in _sample_cache:
+            return _sample_cache[fname], _sample_fs_cache[fname]
+        path = _SAMPLES_DIR / fname
+        if not path.exists():
+            continue
+        audio, sr = _sf.read(str(path), dtype='float32', always_2d=False)
+        if audio.ndim > 1:
+            audio = audio.mean(axis=1)   # stereo → mono
+        _sample_cache[fname]    = audio
+        _sample_fs_cache[fname] = sr
+        return audio, sr
+    return None, None
+
+
+def _nearest_sample_note(target_midi: float):
+    """Return (stem, reference_midi) for the nearest recorded Salamander note."""
+    return min(_SAMPLE_NOTES, key=lambda ns: abs(ns[1] - target_midi))
+
+
+def _sampled_piano(freq: float, duration: float, fs: int = FS) -> np.ndarray:
+    """Realistic piano using Salamander Grand Piano samples.
+
+    Finds the nearest sampled note (always ≤ 1.5 semitones away), then
+    resamples it to the exact target frequency via scipy resample_poly.
+    Supports arbitrary microtonal frequencies with ~0.1 cent accuracy.
+
+    Requires:
+        pip install soundfile
+        python download_salamander.py   (run once to fetch the samples)
+
+    Falls back to the algorithmic _piano() if samples are unavailable.
+    """
+    if not (_HAS_SOUNDFILE and _HAS_SCIPY_SIGNAL):
+        return _piano(freq, duration, fs)
+
+    target_midi = 69.0 + 12.0 * np.log2(max(freq, 1.0) / 440.0)
+    stem, ref_midi = _nearest_sample_note(target_midi)
+    audio, sample_fs = _load_sample(stem)
+
+    if audio is None:
+        return _piano(freq, duration, fs)   # samples not downloaded yet
+
+    # Combined resampling ratio:
+    #   new_length = old_length * (fs / sample_fs) * (ref_hz / freq)
+    # where ref_hz is the pitch of the loaded sample.
+    ref_hz = 440.0 * 2.0 ** ((ref_midi - 69.0) / 12.0)
+    ratio  = fs * ref_hz / (sample_fs * freq)
+
+    # Approximate ratio as a small-integer fraction for resample_poly
+    frac      = _Fraction(ratio).limit_denominator(1000)
+    resampled = _resample_poly(audio, frac.numerator, frac.denominator)
+    resampled = resampled.astype(np.float32)
+
+    # Trim or zero-pad to the requested duration
+    n_target = int(duration * fs)
+    if len(resampled) >= n_target:
+        out = resampled[:n_target].copy()
+        # Smooth fade-out at end to avoid clicks
+        fade = min(int(0.04 * fs), n_target // 4)
+        out[-fade:] *= np.linspace(1.0, 0.0, fade, dtype=np.float32)
+    else:
+        out = np.zeros(n_target, dtype=np.float32)
+        out[:len(resampled)] = resampled
+
+    return out
+
+
+# ── Synth map ──────────────────────────────────────────────────────────────
+
 _SYNTH_MAP: dict = {
     'piano_sound':      _piano,
     'piano':            _piano,
@@ -178,6 +294,8 @@ _SYNTH_MAP: dict = {
     'shimmer':          _shimmer,
     'magic_shimmer':    _shimmer,
     'bright_crystalline': _shimmer,
+    'sampled_piano':    _sampled_piano,
+    'salamander':       _sampled_piano,
 }
 
 def _get_synth(name: str):

@@ -66,6 +66,7 @@ SCORE_BPM = 9600
 _KEYS  = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B']
 _MODES = ['major', 'minor', 'dorian', 'phrygian', 'lydian', 'mixolydian', 'locrian']
 _SOUNDS = [
+    'sampled_piano',
     'piano_sound',
     'bell',
     'crystal_bowl',
