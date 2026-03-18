@@ -370,18 +370,34 @@ def _build_row_degree_map(h_divisions: int, tonic_midi: int,
 
 def _active_region(scale_regions: list, norm_t: float,
                    v_divisions: int) -> Optional[dict]:
-    """Return the active scale region at norm_t (same policy as wave_translator)."""
+    """Return the active scale region at norm_t.
+
+    Supports two zone formats:
+      New (format_version 2): {'t_start': frac, 't_end': frac, ...}
+      Legacy:                 {'col_start': col, 'col_end': col, ...}
+    """
     if not scale_regions:
         return None
-    col = norm_t * v_divisions
-    for r in reversed(scale_regions):
-        if r['col_start'] <= col < r['col_end']:
-            return r
-    # Gap: return left-neighbour zone, or first zone if before all zones
-    sorted_r = sorted(scale_regions, key=lambda r: r['col_start'])
+
+    if 't_start' in scale_regions[0]:
+        # New format: compare norm_t directly against t_start/t_end fractions.
+        for r in reversed(scale_regions):
+            if r['t_start'] <= norm_t < r['t_end']:
+                return r
+        sorted_r = sorted(scale_regions, key=lambda r: r['t_start'])
+    else:
+        # Legacy format: convert norm_t to column space.
+        col = norm_t * v_divisions
+        for r in reversed(scale_regions):
+            if r['col_start'] <= col < r['col_end']:
+                return r
+        sorted_r = sorted(scale_regions, key=lambda r: r['col_start'])
+
+    # Gap or past end: return left-neighbour zone, or first zone if before all.
     prev = None
+    key  = 't_start' if 't_start' in sorted_r[0] else 'col_start'
     for r in sorted_r:
-        if r['col_start'] <= col:
+        if r[key] <= (norm_t if key == 't_start' else norm_t * v_divisions):
             prev = r
         else:
             break
@@ -398,16 +414,27 @@ def _build_curve(control_points: list, n: int = 100_000):
     xs, ys = xs[idx], ys[idx]
     if len(xs) < 2:
         return np.array([]), np.array([])
+    x_fine = np.linspace(xs[0], xs[-1], n)
     if _HAS_SCIPY and len(xs) >= 3:
-        x_fine = np.linspace(xs[0], xs[-1], n)
         y_fine = CubicSpline(xs, ys)(x_fine)
     else:
-        x_fine = np.linspace(xs[0], xs[-1], n)
         y_fine = np.interp(x_fine, xs, ys)
-    grid_top = float(_MARGIN)
-    grid_bot = float(_CH - _MARGIN)
-    t   = (x_fine - x_fine.min()) / (x_fine.max() - x_fine.min())
-    amp = 1.0 - (y_fine - grid_top) / (grid_bot - grid_top)
+
+    if xs.max() > 2.0:
+        # Legacy format: control points in canvas pixel space.
+        # Normalise x → [0,1] and convert y from pixel → amplitude [0,1].
+        grid_top = float(_MARGIN)
+        grid_bot = float(_CH - _MARGIN)
+        t   = (x_fine - x_fine.min()) / max(x_fine.max() - x_fine.min(), 1e-12)
+        amp = 1.0 - (y_fine - grid_top) / (grid_bot - grid_top)
+    else:
+        # New normalised format: xs = t_frac ∈ [0,1], ys = amp ∈ [0,1].
+        # Normalise x to curve-relative [0,1] so _crossing_events can scale
+        # by dur_sec as before.
+        x_span = x_fine[-1] - x_fine[0]
+        t   = (x_fine - x_fine[0]) / max(x_span, 1e-12)
+        amp = y_fine
+
     return t, np.clip(amp, 0.0, 1.0)
 
 
