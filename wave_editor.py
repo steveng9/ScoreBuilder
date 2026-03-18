@@ -125,6 +125,9 @@ class WaveEditor:
         # Guard against recursive prop-change callbacks
         self._loading_props = False
 
+        # Playhead
+        self._playhead_sec: Optional[float] = None
+
         self._build_ui()
         self._update_voice_list()
         self._update_zoom_label()
@@ -737,6 +740,7 @@ class WaveEditor:
         self._draw_voice(self._cur_voice(), active=True)
         self._draw_zones(self._cur_voice())
         self._update_scrollbar()
+        self._draw_playhead()   # always on top of everything
 
     def _right_x(self) -> float:
         cw = self.canvas.winfo_width()
@@ -934,8 +938,10 @@ class WaveEditor:
 
         def _worker():
             try:
-                _synth.play(self._wave_dict(), blocking=True)
-                self.root.after(0, lambda: self._status_var.set("Done"))
+                _synth.play(self._wave_dict(), blocking=False)
+                self.root.after(0, self._start_playhead_poll)
+                _synth.wait()
+                self.root.after(0, self._on_playback_done)
             except RuntimeError as e:
                 msg = str(e)
                 self.root.after(0, lambda: self._status_var.set("No audio device"))
@@ -947,7 +953,50 @@ class WaveEditor:
     def _stop(self) -> None:
         if _HAS_SYNTH:
             _synth.stop()
-            self._status_var.set("Stopped")
+        self._playhead_sec = None
+        self._draw_playhead()
+        self._status_var.set("Stopped")
+
+    # ── Playhead ─────────────────────────────────────────────────────────────
+
+    def _start_playhead_poll(self) -> None:
+        self._status_var.set("Playing…")
+        self._poll_playhead()
+
+    def _poll_playhead(self) -> None:
+        """Called every ~16 ms while audio is playing; updates only the playhead."""
+        t = _synth.get_play_time() if _HAS_SYNTH else None
+        if t is not None:
+            self._playhead_sec = t
+            self._draw_playhead()
+            self.root.after(16, self._poll_playhead)
+        else:
+            self._playhead_sec = None
+            self._draw_playhead()
+
+    def _on_playback_done(self) -> None:
+        self._playhead_sec = None
+        self._draw_playhead()
+        self._status_var.set("Done")
+
+    def _draw_playhead(self) -> None:
+        """Delete and redraw only the playhead line (no full canvas redraw)."""
+        self.canvas.delete('playhead')
+        if self._playhead_sec is None:
+            return
+        t_frac = self._playhead_sec / max(self._total_dur, 1e-6)
+        x = self._t_to_x(t_frac)
+        t = float(_MARGIN_T)
+        b = float(_MARGIN_T + N_ROWS * _CELL_H)
+        r = self._right_x()
+        if float(_MARGIN_L) <= x <= r:
+            self.canvas.create_line(x, t, x, b,
+                                    fill='white', width=1,
+                                    tags='playhead')
+            self.canvas.create_text(x + 3, t - 10,
+                                    text=f"{self._playhead_sec:.1f}s",
+                                    fill=_TEXT, font=('Helvetica', 7),
+                                    anchor='w', tags='playhead')
 
     def _save_wav(self) -> None:
         if not _HAS_SYNTH:

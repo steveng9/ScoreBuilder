@@ -29,9 +29,14 @@ CLI
 """
 
 import json
+import time
 import numpy as np
 from pathlib import Path
 from typing import Optional
+
+# ── Playback position tracking ──────────────────────────────────────────────
+_play_start_wall: Optional[float] = None   # perf_counter() at sd.play() call
+_play_duration:   float           = 0.0    # seconds of audio queued
 
 try:
     from scipy.interpolate import CubicSpline
@@ -429,10 +434,9 @@ def _build_curve(control_points: list, n: int = 100_000):
         amp = 1.0 - (y_fine - grid_top) / (grid_bot - grid_top)
     else:
         # New normalised format: xs = t_frac ∈ [0,1], ys = amp ∈ [0,1].
-        # Normalise x to curve-relative [0,1] so _crossing_events can scale
-        # by dur_sec as before.
-        x_span = x_fine[-1] - x_fine[0]
-        t   = (x_fine - x_fine[0]) / max(x_span, 1e-12)
+        # Return piece-fractions directly so _crossing_events can honour the
+        # voice's actual start/end position within the piece.
+        t   = x_fine
         amp = y_fine
 
     return t, np.clip(amp, 0.0, 1.0)
@@ -450,8 +454,16 @@ def _crossing_events(control_points: list, h_divisions: int,
     if t.size == 0:
         return [(0.0, 1), (dur_sec, None)]
 
+    # Detect format: new format returns piece-fractions (all ≤ 1.0);
+    # legacy format returns curve-normalised [0,1] from pixel-space points.
+    pts_xs = [p[0] for p in control_points]
+    new_fmt = max(pts_xs) <= 2.0
+
     rows = (np.floor(amp * h_divisions).astype(int) + 1).clip(1, h_divisions)
-    events: list = [(0.0, int(rows[0]))]
+
+    # New format: voice starts at its first control-point time, not at t=0.
+    first_t_sec = float(t[0]) * dur_sec if new_fmt else 0.0
+    events: list = [(first_t_sec, int(rows[0]))]
 
     for i in range(len(rows) - 1):
         r0, r1 = int(rows[i]), int(rows[i + 1])
@@ -465,6 +477,8 @@ def _crossing_events(control_points: list, h_divisions: int,
             bdry = min(r_new, r_new - step) / h_divisions
             frac = (bdry - a0) / (a1 - a0) if abs(a1 - a0) > 1e-12 else 0.5
             frac  = max(0.0, min(1.0, frac))
+            # For new format t0/t1 are already piece-fractions; for legacy they
+            # are curve-normalised [0,1] — both multiply by dur_sec to get seconds.
             t_sec = (t0 + frac * (t1 - t0)) * dur_sec
             events.append((t_sec, r_new))
 
@@ -611,6 +625,7 @@ def play(wave_data, blocking: bool = True) -> None:
 
     Requires the `sounddevice` package:  pip install sounddevice
     """
+    global _play_start_wall, _play_duration
     if not _HAS_SD:
         raise RuntimeError(
             "sounddevice is not installed.\n"
@@ -619,13 +634,36 @@ def play(wave_data, blocking: bool = True) -> None:
         )
     rate  = _native_fs()
     audio = render(wave_data, fs=rate)
+    _play_duration   = len(audio) / rate
     sd.play(audio, samplerate=rate, blocksize=2048)
+    _play_start_wall = time.perf_counter()
     if blocking:
         sd.wait()
+        _play_start_wall = None
+
+
+def wait() -> None:
+    """Block until the current sd.play() finishes."""
+    if _HAS_SD:
+        sd.wait()
+    global _play_start_wall
+    _play_start_wall = None
+
+
+def get_play_time() -> Optional[float]:
+    """Return seconds elapsed since playback started, or None if not playing."""
+    if _play_start_wall is None:
+        return None
+    elapsed = time.perf_counter() - _play_start_wall
+    if elapsed > _play_duration + 0.1:   # small grace period for tail
+        return None
+    return elapsed
 
 
 def stop() -> None:
     """Stop any currently playing audio."""
+    global _play_start_wall
+    _play_start_wall = None
     if _HAS_SD:
         sd.stop()
 
