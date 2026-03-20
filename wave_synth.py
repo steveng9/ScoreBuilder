@@ -29,6 +29,7 @@ CLI
 """
 
 import json
+import re
 import time
 import numpy as np
 from pathlib import Path
@@ -93,6 +94,18 @@ _SYNTH_DECAY: dict = {
     'bright_crystalline': 6.0,
     'sampled_piano':    0,   # sentinel: return full sample length
     'salamander':       0,
+    # VSCO 2 CE instruments (sentinel: return full sample)
+    'xylophone':        0,
+    'organ':            0,
+    'chimes':           0,
+    'tubular_bells':    0,
+    'flute':            0,
+    'violin':           0,
+    # Concert percussion
+    'snare':            0,
+    'bass_drum':        0,
+    'timpani':          0,
+    'resonant_tom':     0,
 }
 
 # ── Canvas geometry (must match wave_editor.py) ────────────────────────────
@@ -296,6 +309,176 @@ def _sampled_piano(freq: float, duration: float, fs: int = FS) -> np.ndarray:
     return resampled.astype(np.float32)
 
 
+# ── VSCO 2 Community Edition samples (CC0) ────────────────────────────────
+#
+# Source: https://github.com/sgossner/VSCO-2-CE
+# Download script: python download_vsco.py
+# Samples live in: samples/vsco/<instrument>/
+
+_VSCO_DIR = Path(__file__).parent / 'samples' / 'vsco'
+
+# Regex that matches note names like C4, G#3, D#1, Bb2 inside VSCO filenames.
+_VSCO_NOTE_RE = re.compile(r'[_-]([A-G][b#]?)(\d+)[_.]')
+
+_NOTE_SEMITONES: dict = {
+    'C': 0,  'C#': 1,  'Db': 1,  'D': 2,  'D#': 3,  'Eb': 3,
+    'E': 4,  'F':  5,  'F#': 6,  'Gb': 6,  'G':  7,  'G#': 8,
+    'Ab': 8, 'A':  9,  'A#': 10, 'Bb': 10, 'B':  11,
+}
+
+
+def _vsco_note_to_midi(filename: str) -> Optional[int]:
+    """Parse a MIDI note number from a VSCO-style filename (e.g. 'C4' → 60)."""
+    m = _VSCO_NOTE_RE.search(filename)
+    if not m:
+        return None
+    note, octave = m.group(1), int(m.group(2))
+    semitone = _NOTE_SEMITONES.get(note)
+    if semitone is None:
+        return None
+    return (octave + 1) * 12 + semitone
+
+
+def _timpani_midi_from_name(filename: str) -> Optional[int]:
+    """Map Timpani1–5 filenames to approximate MIDI pitches.
+
+    Standard orchestral 5-piece set, tuned to their typical centre pitches
+    (Timpani1 = highest/smallest, Timpani5 = lowest/largest):
+        1 → F3 (53),  2 → D3 (50),  3 → Bb2 (46),
+        4 → F2 (41),  5 → D2 (38)
+    """
+    _TIMPANI_MIDI = {1: 53, 2: 50, 3: 46, 4: 41, 5: 38}
+    m = re.search(r'Timpani(\d)_', filename)
+    if not m:
+        return None
+    return _TIMPANI_MIDI.get(int(m.group(1)))
+
+
+def _organ_midi_from_name(filename: str) -> Optional[int]:
+    """Parse MIDI note from VSCO organ filename (Rode_Man3Open_NN.wav).
+
+    Organ files are numbered 01, 04, 07, … 61 in 3-semitone steps,
+    starting at C1 (MIDI 24).  Formula: MIDI = 23 + file_number.
+    """
+    m = re.search(r'_(\d{2})\.wav$', filename)
+    if not m:
+        return None
+    return 23 + int(m.group(1))
+
+
+def _vsco_priority(filename: str) -> tuple:
+    """Priority tuple for sample selection within one MIDI pitch.
+
+    Higher tuple → preferred.  Rules: louder velocity layer first,
+    then earlier round-robin (rr1 > rr2), then forte ('f') over piano ('p').
+    """
+    vel_m = re.search(r'_v(\d+)[_.]', filename)
+    rr_m  = re.search(r'rr(\d+)',     filename)
+    dyn   = 1 if '_f.' in filename else (0 if '_p.' in filename else 0)
+    vel   = int(vel_m.group(1)) if vel_m else 0
+    rr    = -(int(rr_m.group(1)) if rr_m else 1)   # negative: rr1 > rr2
+    return (vel, dyn, rr)
+
+
+class _VscoSynth:
+    """Generic sample-based synth backed by a VSCO 2 CE instrument directory.
+
+    Lazily loads WAV files on first call, parses MIDI pitch from each
+    filename (or uses a custom parser), then resamples to the requested
+    frequency via scipy resample_poly — same technique as _sampled_piano.
+
+    Falls back to an algorithmic synth when samples aren't downloaded.
+    """
+
+    def __init__(self, instrument_dir: str, fallback_func,
+                 midi_parser=None, fixed_midi: Optional[int] = None):
+        """
+        instrument_dir : subfolder under samples/vsco/
+        fallback_func  : algorithmic synth to use if samples absent
+        midi_parser    : callable(filename) → int|None  (default: _vsco_note_to_midi)
+        fixed_midi     : if set, ALL files in the directory are treated as
+                         sampled at this MIDI pitch and the best one is loaded.
+                         Use for unpitched/single-source percussion instruments.
+        """
+        self._dir        = _VSCO_DIR / instrument_dir
+        self._fallback   = fallback_func
+        self._parser     = midi_parser or _vsco_note_to_midi
+        self._fixed_midi = fixed_midi
+        self._cache: Optional[dict] = None   # midi → (audio_array, sample_rate)
+
+    def _load(self) -> dict:
+        if self._cache is not None:
+            return self._cache
+        self._cache = {}
+        if not (self._dir.exists() and _HAS_SOUNDFILE and _HAS_SCIPY_SIGNAL):
+            return self._cache
+
+        # For each MIDI pitch, keep the highest-priority variant.
+        best: dict = {}   # midi → (priority_tuple, Path)
+        for wav in sorted(self._dir.glob('*.wav')):
+            midi = self._fixed_midi if self._fixed_midi is not None \
+                   else self._parser(wav.name)
+            if midi is None:
+                continue
+            prio = _vsco_priority(wav.name)
+            if midi not in best or prio > best[midi][0]:
+                best[midi] = (prio, wav)
+
+        for midi, (_, wav) in best.items():
+            audio, sr = _sf.read(str(wav), dtype='float32', always_2d=False)
+            if audio.ndim > 1:
+                audio = audio.mean(axis=1)   # stereo → mono
+            self._cache[midi] = (audio, int(sr))
+        return self._cache
+
+    def __call__(self, freq: float, duration: float,
+                 fs: int = FS) -> np.ndarray:
+        if not (_HAS_SOUNDFILE and _HAS_SCIPY_SIGNAL):
+            return self._fallback(freq, duration, fs)
+        samples = self._load()
+        if not samples:
+            return self._fallback(freq, duration, fs)
+
+        target_midi  = 69.0 + 12.0 * np.log2(max(freq, 1.0) / 440.0)
+        nearest_midi = min(samples, key=lambda m: abs(m - target_midi))
+        audio, sample_fs = samples[nearest_midi]
+
+        ref_hz = 440.0 * 2.0 ** ((nearest_midi - 69.0) / 12.0)
+        ratio  = fs * ref_hz / (sample_fs * freq)
+        frac   = _Fraction(ratio).limit_denominator(1000)
+        resampled = _resample_poly(audio, frac.numerator, frac.denominator)
+        return resampled.astype(np.float32)
+
+
+# One instance per instrument — samples loaded lazily on first note.
+_xylophone_synth   = _VscoSynth('xylophone',    _marimba)
+_organ_synth       = _VscoSynth('organ',         _pad,    midi_parser=_organ_midi_from_name)
+_chimes_synth      = _VscoSynth('chimes',        _bell)
+_flute_synth       = _VscoSynth('flute',         _pad)
+_violin_synth      = _VscoSynth('violin',        _pad)
+# Concert percussion — fixed_midi=60 means the one sample is pitch-shifted
+# up/down by the wave's grid row, giving pitched-percussion behaviour.
+# Snare: sample stored at MIDI 60; wrapper always plays at that fixed pitch
+# so wave crossings control timing only, never pitch.
+_snare_sampler   = _VscoSynth('snare',     _marimba, fixed_midi=60)
+_SNARE_HZ        = 440.0 * 2.0 ** ((60 - 69.0) / 12.0)   # C4 ≈ 261.63 Hz
+
+def _snare_synth(freq: float, duration: float, fs: int = FS) -> np.ndarray:
+    return _snare_sampler(_SNARE_HZ, duration, fs)
+
+# Bass drum: sample stored at MIDI 36 (C2, ~65 Hz).  Pitch is compressed to
+# 8% of normal so even a huge wave curve only drifts ~4–5 semitones.
+_bass_drum_sampler = _VscoSynth('bass_drum', _marimba, fixed_midi=36)
+_BD_CENTER_HZ      = 440.0 * 2.0 ** ((36 - 69.0) / 12.0)   # C2 ≈ 65.41 Hz
+_BD_COMPRESS       = 0.08
+
+def _bass_drum_synth(freq: float, duration: float, fs: int = FS) -> np.ndarray:
+    compressed = _BD_CENTER_HZ * (freq / _BD_CENTER_HZ) ** _BD_COMPRESS
+    return _bass_drum_sampler(compressed, duration, fs)
+_timpani_synth     = _VscoSynth('timpani',        _marimba, midi_parser=_timpani_midi_from_name)
+_res_tom_synth     = _VscoSynth('resonant_tom',  _marimba, fixed_midi=60)
+
+
 # ── Synth map ──────────────────────────────────────────────────────────────
 
 _SYNTH_MAP: dict = {
@@ -320,6 +503,18 @@ _SYNTH_MAP: dict = {
     'bright_crystalline': _shimmer,
     'sampled_piano':    _sampled_piano,
     'salamander':       _sampled_piano,
+    # VSCO 2 CE instruments (fall back to algorithmic if not downloaded)
+    'xylophone':        _xylophone_synth,
+    'organ':            _organ_synth,
+    'chimes':           _chimes_synth,
+    'tubular_bells':    _chimes_synth,
+    'flute':            _flute_synth,
+    'violin':           _violin_synth,
+    # Concert percussion
+    'snare':            _snare_synth,
+    'bass_drum':        _bass_drum_synth,
+    'timpani':          _timpani_synth,
+    'resonant_tom':     _res_tom_synth,
 }
 
 def _get_synth(name: str):
@@ -514,6 +709,63 @@ def _insert_reattacks(events: list, max_hold: float) -> list:
     return out
 
 
+# ── Reverb ─────────────────────────────────────────────────────────────────
+
+# Public presets — keys are shown in the wave_editor dropdown.
+# room_size: 0–1  (controls IR decay length: ~0.3 s → 5 s)
+# damping:   0–1  (high-frequency rolloff: 0 = bright, 1 = muffled)
+# wet:       0–1  (default wet/dry mix for the preset)
+REVERB_PRESETS: dict = {
+    'Dry':          dict(room_size=0.00, damping=0.50, wet=0.00),
+    'Small Room':   dict(room_size=0.20, damping=0.40, wet=0.25),
+    'Studio':       dict(room_size=0.35, damping=0.35, wet=0.30),
+    'Concert Hall': dict(room_size=0.60, damping=0.50, wet=0.40),
+    'Cathedral':    dict(room_size=0.85, damping=0.60, wet=0.50),
+    'Cave':         dict(room_size=0.90, damping=0.15, wet=0.45),
+}
+
+
+def _apply_reverb(audio: np.ndarray, fs: int,
+                  room_size: float = 0.6,
+                  damping: float   = 0.5,
+                  wet: float       = 0.4) -> np.ndarray:
+    """Apply algorithmic reverb via convolution with a synthetic impulse response.
+
+    Builds an IR from exponentially decaying band-limited noise.
+    room_size controls decay length; damping controls high-freq rolloff.
+    Requires scipy (falls back gracefully if unavailable).
+    """
+    if wet < 1e-4 or not _HAS_SCIPY_SIGNAL:
+        return audio
+
+    from scipy.signal import butter, sosfilt, fftconvolve
+
+    # Decay time: 0.3 s (dry-ish) → 5.0 s (cathedral)
+    decay_sec = 0.3 + room_size * 4.7
+    n_ir      = int(decay_sec * fs)
+    t_ir      = np.linspace(0.0, decay_sec, n_ir, dtype=np.float32)
+
+    # Exponential envelope: -60 dB at end of IR
+    envelope = np.exp(-6.0 / decay_sec * t_ir)
+
+    # White noise coloured by a low-pass (damping: 0=20 kHz, 1=~3 kHz)
+    rng    = np.random.default_rng(seed=42)   # fixed seed → consistent sound
+    noise  = rng.standard_normal(n_ir).astype(np.float32)
+    cutoff = max(300.0, 20000.0 * (1.0 - damping * 0.85))
+    sos    = butter(2, min(cutoff / (fs / 2), 0.99), btype='low', output='sos')
+    noise  = sosfilt(sos, noise).astype(np.float32)
+
+    ir = (noise * envelope).astype(np.float32)
+    # Normalise IR by L2 so the reverb level stays consistent across presets
+    ir_rms = float(np.sqrt(np.mean(ir ** 2)))
+    if ir_rms > 1e-8:
+        ir /= ir_rms
+
+    reverb = fftconvolve(audio.astype(np.float64),
+                         ir.astype(np.float64))[:len(audio)].astype(np.float32)
+    return (audio * (1.0 - wet) + reverb * wet).astype(np.float32)
+
+
 # ── Main render ────────────────────────────────────────────────────────────
 
 def render(wave_data, output_wav_path: Optional[str] = None,
@@ -591,12 +843,23 @@ def render(wave_data, output_wav_path: Optional[str] = None,
                 end  = n_total
             mix[start:end] += note
 
-    # Normalise to 0.9 peak
-    peak = np.max(np.abs(mix))
-    if peak > 1e-8:
-        mix *= 0.9 / peak
-
     audio = mix.astype(np.float32)
+
+    # Apply reverb (if configured)
+    rev = wave_data.get('reverb', {})
+    wet = float(rev.get('wet', 0.0))
+    if wet > 1e-4:
+        audio = _apply_reverb(
+            audio, fs,
+            room_size=float(rev.get('room_size', 0.6)),
+            damping=float(rev.get('damping',   0.5)),
+            wet=wet,
+        )
+
+    # Normalise to 0.9 peak
+    peak = np.max(np.abs(audio))
+    if peak > 1e-8:
+        audio *= 0.9 / peak
 
     if output_wav_path:
         import scipy.io.wavfile as wf

@@ -78,7 +78,13 @@ SCORE_BPM = 9600
 _KEYS  = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B']
 _MODES = ['major', 'minor', 'dorian', 'phrygian', 'lydian', 'mixolydian', 'locrian']
 _SOUNDS = [
-    'sampled_piano', 'piano_sound', 'bell', 'crystal_bowl', 'rich_bell',
+    # Sampled instruments (require download_vsco.py / download_salamander.py)
+    'xylophone', 'organ', 'chimes', 'flute', 'violin',
+    'sampled_piano',
+    # Concert percussion (pitch-shifted per grid row)
+    'snare', 'bass_drum', 'timpani', 'resonant_tom',
+    # Algorithmic synths
+    'piano_sound', 'bell', 'crystal_bowl', 'rich_bell',
     'marimba', 'soft_kalimba', 'tonal_percussion', 'vibraphone',
     'pad', 'ethereal_pad', 'shimmer', 'magic_shimmer',
     'bright_crystalline', 'breathy_flute',
@@ -125,6 +131,10 @@ class WaveEditor:
         # Guard against recursive prop-change callbacks
         self._loading_props = False
 
+        # ── Reverb ────────────────────────────────────────────────────────
+        self._reverb_preset_var = tk.StringVar(value='Dry')
+        self._reverb_wet_var    = tk.DoubleVar(value=0.0)
+
         # Playhead
         self._playhead_sec: Optional[float] = None
 
@@ -135,16 +145,14 @@ class WaveEditor:
 
     # ── Voice factory ───────────────────────────────────────────────────────
 
-    def _new_voice(self, name: str, color_idx: int) -> dict:
-        n  = 7
-        xs = np.linspace(0.05, 0.95, n)
-        ys = 0.5 + 0.3 * np.sin(np.linspace(0, 3 * np.pi, n))
+    def _new_voice(self, name: str, color_idx: int,
+                   start_t: float = 0.05) -> dict:
         return {
             'name':           name,
             'sound_func':     'sampled_piano',
             'octave_shift':   0,
             'color_idx':      color_idx % len(_VOICE_COLORS),
-            'control_points': [[float(x), float(y)] for x, y in zip(xs, ys)],
+            'control_points': [[start_t, 0.5], [0.95, 0.5]],
             'zones': [{'t_start': 0.0, 't_end': 1.0,
                        'key': 'C', 'mode': 'major', 'color_idx': 0}],
         }
@@ -363,6 +371,42 @@ class WaveEditor:
                       command=self._on_zone_prop_change).pack(
                           side=tk.RIGHT, fill=tk.X, expand=True)
 
+        sep()
+
+        # ── Reverb ────────────────────────────────────────────────────────
+        lbl("Reverb", 9, _SUBTEXT, bold=True).pack(pady=(4, 2))
+
+        _preset_names = list(
+            _synth.REVERB_PRESETS.keys() if _HAS_SYNTH else
+            ['Dry', 'Small Room', 'Studio', 'Concert Hall', 'Cathedral', 'Cave']
+        )
+
+        rrow = tk.Frame(panel, bg=_BG)
+        rrow.pack(fill=tk.X, padx=8, pady=1)
+        tk.Label(rrow, text='space', bg=_BG, fg=_SUBTEXT,
+                 font=('Helvetica', 8)).pack(side=tk.LEFT)
+        self._reverb_cb = ttk.Combobox(
+            rrow, textvariable=self._reverb_preset_var,
+            values=_preset_names, width=13, state='readonly',
+            font=('Helvetica', 8))
+        self._reverb_cb.pack(side=tk.RIGHT)
+        self._reverb_preset_var.trace_add('write', self._on_reverb_preset_change)
+
+        wrow = tk.Frame(panel, bg=_BG)
+        wrow.pack(fill=tk.X, padx=8, pady=(1, 4))
+        tk.Label(wrow, text='amount', bg=_BG, fg=_SUBTEXT,
+                 font=('Helvetica', 8)).pack(side=tk.LEFT)
+        self._reverb_wet_lbl = tk.Label(wrow, text='0%', bg=_BG, fg=_BLUE,
+                                        font=('Helvetica', 8), width=4)
+        self._reverb_wet_lbl.pack(side=tk.RIGHT)
+        tk.Scale(
+            wrow, variable=self._reverb_wet_var,
+            from_=0.0, to=1.0, resolution=0.01, orient=tk.HORIZONTAL,
+            bg=_BG, fg=_TEXT, troughcolor=_BG2,
+            highlightthickness=0, sliderlength=14, showvalue=False,
+            command=self._on_reverb_wet_change,
+        ).pack(side=tk.RIGHT, fill=tk.X, expand=True)
+
         # Spacer + reset
         tk.Frame(panel, bg=_BG).pack(expand=True)
         ttk.Button(panel, text="Reset voice curve", command=self._reset).pack(
@@ -443,8 +487,9 @@ class WaveEditor:
         self._redraw()
 
     def _add_voice(self) -> None:
-        idx = len(self._voices)
-        self._voices.append(self._new_voice(f'v{idx + 1}', idx))
+        idx     = len(self._voices)
+        start_t = min(p[0] for p in self._cur_voice()['control_points'])
+        self._voices.append(self._new_voice(f'v{idx + 1}', idx, start_t))
         self._cur_v = len(self._voices) - 1
         self._sel_zone = None
         self._update_voice_list()
@@ -707,6 +752,22 @@ class WaveEditor:
         except ValueError:
             pass
 
+    # ── Reverb callbacks ────────────────────────────────────────────────────
+
+    def _on_reverb_preset_change(self, *_) -> None:
+        """When the preset changes, update the wet slider to the preset default."""
+        if not _HAS_SYNTH:
+            return
+        preset = self._reverb_preset_var.get()
+        params = _synth.REVERB_PRESETS.get(preset, {})
+        wet    = float(params.get('wet', 0.0))
+        self._reverb_wet_var.set(wet)
+        self._reverb_wet_lbl.config(text=f'{int(wet * 100)}%')
+
+    def _on_reverb_wet_change(self, value) -> None:
+        wet = float(value)
+        self._reverb_wet_lbl.config(text=f'{int(wet * 100)}%')
+
     # ── Hit testing ─────────────────────────────────────────────────────────
 
     def _hit_pt(self, x: float, y: float, pts: list, r: float = _PR + 6) -> Optional[list]:
@@ -920,10 +981,18 @@ class WaveEditor:
                 'control_points': [p[:] for p in v['control_points']],
                 'scale_regions':  self._zones_to_scale_regions(v),
             })
+        preset  = self._reverb_preset_var.get()
+        rv_base = (_synth.REVERB_PRESETS.get(preset, {}) if _HAS_SYNTH else {})
         return {
             'format_version':   2,
             'bpm':              SCORE_BPM,
             'duration_seconds': self._total_dur,
+            'reverb': {
+                'preset':    preset,
+                'room_size': float(rv_base.get('room_size', 0.0)),
+                'damping':   float(rv_base.get('damping',   0.5)),
+                'wet':       float(self._reverb_wet_var.get()),
+            },
             'voices':           voices,
         }
 
@@ -1035,12 +1104,20 @@ class WaveEditor:
         )
         if not path:
             return
+        preset  = self._reverb_preset_var.get()
+        rv_base = (_synth.REVERB_PRESETS.get(preset, {}) if _HAS_SYNTH else {})
         data = {
             'format_version':   2,
             'bpm':              SCORE_BPM,
             'duration_seconds': self._total_dur,
             'view_start':       self._view_start,
             'view_end':         self._view_end,
+            'reverb': {
+                'preset':    preset,
+                'room_size': float(rv_base.get('room_size', 0.0)),
+                'damping':   float(rv_base.get('damping',   0.5)),
+                'wet':       float(self._reverb_wet_var.get()),
+            },
             'voices': [
                 {
                     'name':           v['name'],
@@ -1070,6 +1147,11 @@ class WaveEditor:
 
         self._total_dur = float(data.get('duration_seconds', 30))
         self._duration_var.set(str(self._total_dur))
+
+        rev = data.get('reverb', {})
+        self._reverb_preset_var.set(rev.get('preset', 'Dry'))
+        self._reverb_wet_var.set(float(rev.get('wet', 0.0)))
+        self._reverb_wet_lbl.config(text=f"{int(float(rev.get('wet', 0.0)) * 100)}%")
 
         if version >= 2:
             self._view_start = float(data.get('view_start', 0))
